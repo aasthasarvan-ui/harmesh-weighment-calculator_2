@@ -429,6 +429,12 @@ window.loadUsersTable = function() {
     });
 }
 
+window.loadAuditLogs = function() {
+    // Agar aap Firebase use kar rahe hain toh logs fetch karne ka code yahan aayega
+    console.log("loadAuditLogs called successfully.");
+};
+
+
 function logUserAction(actionDescription) {
     // Current Date aur Time nikalne ke liye
     const now = new Date();
