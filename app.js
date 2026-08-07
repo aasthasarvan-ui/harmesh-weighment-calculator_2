@@ -42,10 +42,41 @@ function logActivity(actionDesc) {
 }
 
 // --- SESSION TIMEOUT MANAGEMENT (10 Minutes) ---
+
 let inactivityTimer;
+let countdownInterval;
+let timeLeft = 10 * 60; // 10 minutes in seconds
+
+function updateTimerDisplay() {
+    const minutes = Math.floor(timeLeft / 60);
+    const seconds = timeLeft % 60;
+    
+    // Timer display element ka id 'timerDisplay' mana gaya hai
+    const displayElement = document.getElementById("timerDisplay");
+    if (displayElement) {
+        displayElement.innerText = `Auto logout in: ${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+    }
+}
 
 function resetInactivityTimer() {
     clearTimeout(inactivityTimer);
+    clearInterval(countdownInterval);
+    
+    // Timer ko wapas 10 minutes (600 seconds) par reset karein
+    timeLeft = 10 * 60;
+    updateTimerDisplay();
+
+    // Har 1 second mein time kam karne ke liye
+    countdownInterval = setInterval(() => {
+        timeLeft--;
+        updateTimerDisplay();
+
+        if (timeLeft <= 0) {
+            clearInterval(countdownInterval);
+        }
+    }, 1000);
+
+    // 10 minutes complete hone par logout trigger hoga
     inactivityTimer = setTimeout(() => {
         if (!document.getElementById("calculatorScreen").classList.contains("hide")) {
             triggerLogout("Session expired due to 10 minutes of inactivity.");
@@ -53,9 +84,13 @@ function resetInactivityTimer() {
     }, 10 * 60 * 1000);
 }
 
-['mousemove', 'keydown', 'click', 'scroll'].forEach(evt => {
+// User activity events (Desktop + Mobile touch support ke sath)
+['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(evt => {
     window.addEventListener(evt, resetInactivityTimer, true);
 });
+
+// Page load hote hi timer start karein
+resetInactivityTimer();
 
 function openCalculator(userName) {
   document.getElementById("loginScreen").classList.add("hide");
