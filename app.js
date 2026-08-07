@@ -429,39 +429,49 @@ window.loadUsersTable = function() {
     });
 }
 
+
+     import { getDatabase, ref, query, limitToLast, get } from "https://www.gstatic.com/firebasejs/9.x.x/firebase-database.js"; // (Apne project ke imports ke anusaar rakhein)
+
 window.loadAuditLogs = function() {
-    // Agar aap Firebase use kar rahe hain toh logs fetch karne ka code yahan aayega
-    console.log("loadAuditLogs called successfully.");
+    // Agar database ya reference undefined hai toh error se bachne ke liye check
+    if (typeof database === 'undefined') {
+        console.error("Database is not initialized.");
+        return;
+    }
+
+    const logsRef = query(ref(database, 'logs'), limitToLast(15));
+    
+    get(logsRef).then((snapshot) => {
+        const tbody = document.getElementById('logsListBody');
+        if (!tbody) return; // Agar HTML mein element nahi mila toh aage error na aaye
+        
+        tbody.innerHTML = '';
+        if (snapshot.exists()) {
+            let logsArray = [];
+            snapshot.forEach((childSnapshot) => {
+                logsArray.push(childSnapshot.val());
+            });
+            
+            // Sabse naye logs ko sabse upar dikhane ke liye
+            logsArray.reverse().forEach((log) => {
+                const timeString = log.timestamp || 'N/A';
+                const actionString = log.action || 'Unknown Action';
+                
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${timeString}</td>
+                        <td style="text-align: left;">${actionString}</td>
+                    </tr>
+                `;
+            });
+        } else {
+            tbody.innerHTML = `<tr><td colspan="2" style="text-align: center;">No logs found</td></tr>`;
+        }
+    }).catch((error) => {
+        console.error("Error loading audit logs: ", error);
+    });
 };
 
-
-function logUserAction(actionDescription) {
-    // Current Date aur Time nikalne ke liye
-    const now = new Date();
-    
-    // Readable format (Jaise: 07/08/2026, 8:15:30 AM) ya ISO format
-    const timestamp = now.toLocaleString(); // Ya now.toISOString() use kar sakte hain
-
-    const logData = {
-        action: actionDescription,
-        user: currentUser || "Unknown User", // Jo user logged-in hai uska naam
-        timestamp: timestamp // Yahan exact time stamp save ho raha hai
-    };
-
-    // Agar aap Firebase Realtime Database use kar rahe hain:
-    if (typeof firebase !== 'undefined') {
-        firebase.database().ref('audit_logs').push(logData)
-            .then(() => {
-                console.log("Log saved successfully with timestamp:", timestamp);
-            })
-            .catch((error) => {
-                console.error("Error saving log:", error);
-            });
-    } else {
-        // Agar local storage ya console mein test karna ho
-        console.log("Local Log:", logData);
-    }
-}
 
 
 window.resetDevice = function(userId, userName) {
