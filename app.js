@@ -430,10 +430,7 @@ window.loadUsersTable = function() {
 }
 
 
-     import { getDatabase, ref, query, limitToLast, get } from "https://www.gstatic.com/firebasejs/9.x.x/firebase-database.js"; // (Apne project ke imports ke anusaar rakhein)
-
-window.loadAuditLogs = function() {
-    // Agar database ya reference undefined hai toh error se bachne ke liye check
+     window.loadAuditLogs = function() {
     if (typeof database === 'undefined') {
         console.error("Database is not initialized.");
         return;
@@ -443,7 +440,7 @@ window.loadAuditLogs = function() {
     
     get(logsRef).then((snapshot) => {
         const tbody = document.getElementById('logsListBody');
-        if (!tbody) return; // Agar HTML mein element nahi mila toh aage error na aaye
+        if (!tbody) return;
         
         tbody.innerHTML = '';
         if (snapshot.exists()) {
@@ -471,6 +468,8 @@ window.loadAuditLogs = function() {
         console.error("Error loading audit logs: ", error);
     });
 };
+
+                    
 
 
 
