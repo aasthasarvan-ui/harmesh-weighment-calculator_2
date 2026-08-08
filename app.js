@@ -100,6 +100,16 @@ function openCalculator(userName) {
 }
 
 function triggerLogout(reason = "") {
+  // Timer ko turant rokne ke liye:
+  clearTimeout(inactivityTimer);
+  clearInterval(countdownInterval);
+  
+  // Timer text ko reset ya hide karne ke liye
+  const displayElement = document.getElementById("timerDisplay");
+  if (displayElement) {
+      displayElement.innerText = ""; 
+  }
+
   document.getElementById("calculatorScreen").classList.add("hide");
   document.getElementById("loginScreen").classList.remove("hide");
   document.getElementById("pin").value = "";
@@ -107,6 +117,7 @@ function triggerLogout(reason = "") {
   document.getElementById("loginMessage").innerText = reason;
   logActivity("User Logged Out" + (reason ? ` (${reason})` : ""));
 }
+
 
 // --- BROWSER FINGERPRINT GENERATOR ---
 let deviceFingerprint = "";
