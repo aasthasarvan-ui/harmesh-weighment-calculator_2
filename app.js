@@ -41,8 +41,9 @@ function logActivity(actionDesc) {
     }).catch(err => console.error("Logging error:", err));
 }
 
-// --- SESSION TIMEOUT MANAGEMENT (10 Minutes) ---
+// --- SESSION TIMEOUT MANAGEMENT (10 Minutes with Warning) ---
 let inactivityTimer;
+let warningTimer;
 let countdownInterval;
 let timeLeft = 10 * 60; // 10 minutes in seconds
 
@@ -57,15 +58,20 @@ function updateTimerDisplay() {
 }
 
 function resetInactivityTimer() {
-    // FIX: Agar user Login Screen par hai (Calculator hide hai), toh timer start mat karo!
     const calcScreen = document.getElementById("calculatorScreen");
     if (!calcScreen || calcScreen.classList.contains("hide")) {
         return; 
     }
 
     clearTimeout(inactivityTimer);
+    clearTimeout(warningTimer);
     clearInterval(countdownInterval);
     
+    const warningModal = document.getElementById("sessionWarningModal");
+    if (warningModal) {
+        warningModal.classList.add("hide");
+    }
+
     timeLeft = 10 * 60;
     updateTimerDisplay();
 
@@ -78,34 +84,71 @@ function resetInactivityTimer() {
         }
     }, 1000);
 
+    // 9 minutes pure hone par Warning Modal dikhayein
+    warningTimer = setTimeout(() => {
+        if (!document.getElementById("calculatorScreen").classList.contains("hide")) {
+            if (warningModal) {
+                warningModal.classList.remove("hide");
+            }
+        }
+    }, 9 * 60 * 1000);
+
+    // 10 minutes pure hone par Logout
     inactivityTimer = setTimeout(() => {
         triggerLogout("Session expired due to 10 minutes of inactivity.");
     }, 10 * 60 * 1000);
 }
 
-// User activity events (Mouse hilane ya type karne par timer reset hoga, lekin sirf login ke baad)
+// User activity events
 ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(evt => {
-    window.addEventListener(evt, resetInactivityTimer, true);
+    window.addEventListener(evt, () => {
+        const warningModal = document.getElementById("sessionWarningModal");
+        if (warningModal && warningModal.classList.contains("hide")) {
+            resetInactivityTimer();
+        }
+    }, true);
+});
+
+// Modal buttons event listeners
+document.addEventListener("DOMContentLoaded", () => {
+    const extendBtn = document.getElementById("extendSessionBtn");
+    const forceLogoutBtn = document.getElementById("forceLogoutBtn");
+
+    if (extendBtn) {
+        extendBtn.onclick = () => {
+            resetInactivityTimer();
+            logActivity("Session Extended by User");
+        };
+    }
+
+    if (forceLogoutBtn) {
+        forceLogoutBtn.onclick = () => {
+            triggerLogout("Manually logged out from warning prompt.");
+        };
+    }
 });
 
 function openCalculator(userName) {
   document.getElementById("loginScreen").classList.add("hide");
   document.getElementById("calculatorScreen").classList.remove("hide");
   
-  // Login hone par timer start
   resetInactivityTimer(); 
-  
   logActivity(`User Logged In: ${userName || 'Email Link User'}`);
 }
 
 function triggerLogout(reason = "") {
-  // Logout hote hi timer rok dein aur display khali kar dein
   clearTimeout(inactivityTimer);
+  clearTimeout(warningTimer);
   clearInterval(countdownInterval);
   
   const displayElement = document.getElementById("timerDisplay");
   if (displayElement) {
       displayElement.innerText = ""; 
+  }
+
+  const warningModal = document.getElementById("sessionWarningModal");
+  if (warningModal) {
+      warningModal.classList.add("hide");
   }
 
   document.getElementById("calculatorScreen").classList.add("hide");
@@ -402,16 +445,33 @@ window.resetMasterPinToDefault = function() {
     }
 }
 
-// --- LOAD USERS TABLE ---
-window.loadUsersTable = function() {
+// Global variable to store users for search filtering
+let allUsersCache = [];
+
+// --- LOAD USERS TABLE (WITH SEARCH FILTER) ---
+window.loadUsersTable = function(searchQuery = "") {
     get(ref(database, 'users')).then((snapshot) => {
         const tbody = document.getElementById('usersListBody');
         tbody.innerHTML = '';
         if (snapshot.exists()) {
+            allUsersCache = []; // clear cache
             snapshot.forEach((childSnapshot) => {
-                const id = childSnapshot.key;
-                const data = childSnapshot.val();
-                
+                allUsersCache.push({ id: childSnapshot.key, ...childSnapshot.val() });
+            });
+
+            // Filter based on search query (Name or Email)
+            const filteredUsers = allUsersCache.filter(user => 
+                user.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                (user.email && user.email.toLowerCase().includes(searchQuery.toLowerCase()))
+            );
+
+            if (filteredUsers.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No users found</td></tr>`;
+                return;
+            }
+
+            filteredUsers.forEach((data) => {
+                const id = data.id;
                 let resetBtnStyle = "background-color: #ff9800; color: white; border: none; padding: 5px 10px; cursor: pointer; border-radius: 3px;";
                 let toggleBtnStyle = `background-color: ${data.status === 'active' ? '#dc3545' : '#28a745'}; color: white; border: none; padding: 5px 10px; cursor: pointer; border-radius: 3px; margin-left: 5px;`;
                 let pinEyeStyle = "background: none; border: none; cursor: pointer; font-size: 14px; margin-left: 5px;";
@@ -439,6 +499,66 @@ window.loadUsersTable = function() {
             });
         }
     });
+}
+
+// --- FILTER USERS ON SEARCH INPUT ---
+window.filterUsersTable = function(event) {
+    const queryVal = event.target.value;
+    loadUsersTable(queryVal);
+}
+
+// --- USER PIN CHANGE LOGIC ---
+window.submitUserPinChange = async function() {
+    const email = document.getElementById('currentUserEmailInput').value.trim().toLowerCase();
+    const oldPin = document.getElementById('currentOldPin').value.trim();
+    const newPin = document.getElementById('currentNewPin').value.trim();
+
+    if (!email || oldPin.length !== 4 || newPin.length !== 4) {
+        alert("Please enter valid email and 4-digit PINs.");
+        return;
+    }
+
+    try {
+        let usersRef = ref(database, 'users');
+        let snapshot = await get(usersRef);
+
+        if (!snapshot.exists()) {
+            alert("No users found.");
+            return;
+        }
+
+        let foundUserId = null;
+        let foundUserData = null;
+
+        snapshot.forEach((childSnapshot) => {
+            let userData = childSnapshot.val();
+            if (userData.email && userData.email.toLowerCase() === email) {
+                foundUserId = childSnapshot.key;
+                foundUserData = userData;
+            }
+        });
+
+        if (!foundUserId) {
+            alert("Email not found in database.");
+            return;
+        }
+
+        if (foundUserData.pin !== oldPin) {
+            alert("Incorrect current PIN!");
+            return;
+        }
+
+        await update(ref(database, 'users/' + foundUserId), { pin: newPin });
+        alert("PIN changed successfully!");
+        document.getElementById('currentUserEmailInput').value = '';
+        document.getElementById('currentOldPin').value = '';
+        document.getElementById('currentNewPin').value = '';
+        document.getElementById('changePinModal').classList.add('hide');
+        logActivity(`PIN Changed by User: ${foundUserData.name}`);
+
+    } catch (error) {
+        alert("Error changing PIN: " + error.message);
+    }
 }
 
 // --- PIN HIDE/SHOW TOGGLE ---
