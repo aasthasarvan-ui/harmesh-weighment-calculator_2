@@ -32,7 +32,7 @@ async function hashString(message) {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// --- HELPER: LOG ACTIVITY TO DATABASE (FIXED) ---
+// --- HELPER: LOG ACTIVITY TO DATABASE ---
 function logActivity(actionDesc) {
     const logRef = ref(database, 'logs');
     push(logRef, {
@@ -51,7 +51,6 @@ function updateTimerDisplay() {
     const minutes = Math.floor(timeLeft / 60);
     const seconds = timeLeft % 60;
     
-    // Timer display element ka id 'timerDisplay' mana gaya hai
     const displayElement = document.getElementById("timerDisplay");
     if (displayElement) {
         displayElement.innerText = `Auto logout in: ${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
@@ -62,11 +61,9 @@ function resetInactivityTimer() {
     clearTimeout(inactivityTimer);
     clearInterval(countdownInterval);
     
-    // Timer ko wapas 10 minutes (600 seconds) par reset karein
     timeLeft = 10 * 60;
     updateTimerDisplay();
 
-    // Har 1 second mein time kam karne ke liye
     countdownInterval = setInterval(() => {
         timeLeft--;
         updateTimerDisplay();
@@ -76,7 +73,6 @@ function resetInactivityTimer() {
         }
     }, 1000);
 
-    // 10 minutes complete hone par logout trigger hoga
     inactivityTimer = setTimeout(() => {
         if (!document.getElementById("calculatorScreen").classList.contains("hide")) {
             triggerLogout("Session expired due to 10 minutes of inactivity.");
@@ -84,27 +80,24 @@ function resetInactivityTimer() {
     }, 10 * 60 * 1000);
 }
 
-// User activity events (Desktop + Mobile touch support ke sath)
+// User activity events (Desktop + Mobile touch support)
 ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(evt => {
     window.addEventListener(evt, resetInactivityTimer, true);
 });
 
-// Page load hote hi timer start karein
-resetInactivityTimer();
-
 function openCalculator(userName) {
   document.getElementById("loginScreen").classList.add("hide");
   document.getElementById("calculatorScreen").classList.remove("hide");
-  resetInactivityTimer();
+  
+  resetInactivityTimer(); 
+  
   logActivity(`User Logged In: ${userName || 'Email Link User'}`);
 }
 
 function triggerLogout(reason = "") {
-  // Timer ko turant rokne ke liye:
   clearTimeout(inactivityTimer);
   clearInterval(countdownInterval);
   
-  // Timer text ko reset ya hide karne ke liye
   const displayElement = document.getElementById("timerDisplay");
   if (displayElement) {
       displayElement.innerText = ""; 
@@ -117,7 +110,6 @@ function triggerLogout(reason = "") {
   document.getElementById("loginMessage").innerText = reason;
   logActivity("User Logged Out" + (reason ? ` (${reason})` : ""));
 }
-
 
 // --- BROWSER FINGERPRINT GENERATOR ---
 let deviceFingerprint = "";
@@ -282,7 +274,7 @@ document.getElementById("logoutBtn").onclick = () => {
 };
 
 
-// --- ADMIN PANEL LOGIC (With SHA-256 Hashed Master PIN & PIN Management) ---
+// --- ADMIN PANEL LOGIC ---
 window.openAdminPanel = function() {
     const passwordModal = document.getElementById('adminPasswordModal');
     const pinInput = document.getElementById('adminPinInput');
@@ -311,7 +303,6 @@ window.openAdminPanel = function() {
             let adminPinRef = ref(database, 'admin/master_pin');
             let snapshot = await get(adminPinRef);
 
-            // Default fallback hash for "1234"
             let correctPinHash = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"; 
             if (snapshot.exists()) {
                 correctPinHash = String(snapshot.val());
@@ -393,12 +384,12 @@ window.changeMasterPin = async function() {
     }
 }
 
-// --- RESET MASTER PIN TO DEFAULT ("1234") ---
+// --- RESET MASTER PIN TO DEFAULT ---
 window.resetMasterPinToDefault = function() {
-    if (confirm("Are you sure you want to reset the Master PIN back to default '1234'?")) {
+    if (confirm("Are you sure you want to reset the Master PIN back to default?")) {
         const defaultPinHash = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4";
         set(ref(database, 'admin/master_pin'), defaultPinHash).then(() => {
-            alert("Master PIN has been reset to '1234' successfully!");
+            alert("Master PIN has been reset successfully!");
             logActivity("Admin Master PIN Reset to Default");
         }).catch((error) => {
             alert("Error resetting Master PIN: " + error.message);
@@ -406,6 +397,7 @@ window.resetMasterPinToDefault = function() {
     }
 }
 
+// --- LOAD USERS TABLE ---
 window.loadUsersTable = function() {
     get(ref(database, 'users')).then((snapshot) => {
         const tbody = document.getElementById('usersListBody');
@@ -417,6 +409,7 @@ window.loadUsersTable = function() {
                 
                 let resetBtnStyle = "background-color: #ff9800; color: white; border: none; padding: 5px 10px; cursor: pointer; border-radius: 3px;";
                 let toggleBtnStyle = `background-color: ${data.status === 'active' ? '#dc3545' : '#28a745'}; color: white; border: none; padding: 5px 10px; cursor: pointer; border-radius: 3px; margin-left: 5px;`;
+                let pinEyeStyle = "background: none; border: none; cursor: pointer; font-size: 14px; margin-left: 5px;";
 
                 let actionBtns = `
                     <button style="${resetBtnStyle}" onclick="resetDevice('${id}', '${data.name}')">Reset PC</button>
@@ -429,7 +422,10 @@ window.loadUsersTable = function() {
                     <tr>
                         <td>${data.name}</td>
                         <td>${data.email || 'N/A'}</td>
-                        <td>${data.pin}</td>
+                        <td>
+                            <span id="pin-text-${id}" style="letter-spacing: 2px;">••••</span>
+                            <button style="${pinEyeStyle}" onclick="togglePinVisibility('${id}', '${data.pin}')" id="pin-btn-${id}" title="Show/Hide PIN">👁️</button>
+                        </td>
                         <td style="color: ${data.status === 'active' ? 'green' : 'red'}; font-weight: bold;">${data.status.toUpperCase()}</td>
                         <td>${data.deviceId ? '🔒 Locked' : '🔓 Unlocked'}</td>
                         <td>${actionBtns}</td>
@@ -440,8 +436,22 @@ window.loadUsersTable = function() {
     });
 }
 
+// --- PIN HIDE/SHOW TOGGLE ---
+window.togglePinVisibility = function(userId, actualPin) {
+    const pinSpan = document.getElementById(`pin-text-${userId}`);
+    const pinBtn = document.getElementById(`pin-btn-${userId}`);
+    
+    if (pinSpan.innerText === "••••") {
+        pinSpan.innerText = actualPin;
+        pinBtn.innerText = "🙈"; 
+    } else {
+        pinSpan.innerText = "••••";
+        pinBtn.innerText = "👁️"; 
+    }
+}
 
-     window.loadAuditLogs = function() {
+// --- LOAD AUDIT LOGS ---
+window.loadAuditLogs = function() {
     if (typeof database === 'undefined') {
         console.error("Database is not initialized.");
         return;
@@ -460,7 +470,6 @@ window.loadUsersTable = function() {
                 logsArray.push(childSnapshot.val());
             });
             
-            // Sabse naye logs ko sabse upar dikhane ke liye
             logsArray.reverse().forEach((log) => {
                 const timeString = log.timestamp || 'N/A';
                 const actionString = log.action || 'Unknown Action';
@@ -479,10 +488,6 @@ window.loadUsersTable = function() {
         console.error("Error loading audit logs: ", error);
     });
 };
-
-                    
-
-
 
 window.resetDevice = function(userId, userName) {
     if(confirm(`Are you sure you want to reset the PC lock for ${userName}?`)) {
