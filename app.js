@@ -42,7 +42,6 @@ function logActivity(actionDesc) {
 }
 
 // --- SESSION TIMEOUT MANAGEMENT (10 Minutes) ---
-
 let inactivityTimer;
 let countdownInterval;
 let timeLeft = 10 * 60; // 10 minutes in seconds
@@ -58,6 +57,12 @@ function updateTimerDisplay() {
 }
 
 function resetInactivityTimer() {
+    // FIX: Agar user Login Screen par hai (Calculator hide hai), toh timer start mat karo!
+    const calcScreen = document.getElementById("calculatorScreen");
+    if (!calcScreen || calcScreen.classList.contains("hide")) {
+        return; 
+    }
+
     clearTimeout(inactivityTimer);
     clearInterval(countdownInterval);
     
@@ -74,13 +79,11 @@ function resetInactivityTimer() {
     }, 1000);
 
     inactivityTimer = setTimeout(() => {
-        if (!document.getElementById("calculatorScreen").classList.contains("hide")) {
-            triggerLogout("Session expired due to 10 minutes of inactivity.");
-        }
+        triggerLogout("Session expired due to 10 minutes of inactivity.");
     }, 10 * 60 * 1000);
 }
 
-// User activity events (Desktop + Mobile touch support)
+// User activity events (Mouse hilane ya type karne par timer reset hoga, lekin sirf login ke baad)
 ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(evt => {
     window.addEventListener(evt, resetInactivityTimer, true);
 });
@@ -89,12 +92,14 @@ function openCalculator(userName) {
   document.getElementById("loginScreen").classList.add("hide");
   document.getElementById("calculatorScreen").classList.remove("hide");
   
+  // Login hone par timer start
   resetInactivityTimer(); 
   
   logActivity(`User Logged In: ${userName || 'Email Link User'}`);
 }
 
 function triggerLogout(reason = "") {
+  // Logout hote hi timer rok dein aur display khali kar dein
   clearTimeout(inactivityTimer);
   clearInterval(countdownInterval);
   
