@@ -26,19 +26,28 @@ const actionCodeSettings = {
 
 // --- HELPER: SHA-256 HASHING FUNCTION ---
 async function hashString(message) {
-    const msgBuffer = new TextEncoder().encode(message);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    try {
+        const msgBuffer = new TextEncoder().encode(message);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {
+        console.error("Hashing error:", e);
+        return "";
+    }
 }
 
 // --- HELPER: LOG ACTIVITY TO DATABASE ---
 function logActivity(actionDesc) {
-    const logRef = ref(database, 'logs');
-    push(logRef, {
-        action: actionDesc,
-        timestamp: new Date().toLocaleString()
-    }).catch(err => console.error("Logging error:", err));
+    try {
+        const logRef = ref(database, 'logs');
+        push(logRef, {
+            action: actionDesc,
+            timestamp: new Date().toLocaleString()
+        }).catch(err => console.error("Logging error:", err));
+    } catch (e) {
+        console.error("Log exception:", e);
+    }
 }
 
 // --- SESSION TIMEOUT MANAGEMENT (10 Minutes with Warning) ---
@@ -86,7 +95,8 @@ function resetInactivityTimer() {
 
     // 9 minutes pure hone par Warning Modal dikhayein
     warningTimer = setTimeout(() => {
-        if (!document.getElementById("calculatorScreen").classList.contains("hide")) {
+        const activeCalcScreen = document.getElementById("calculatorScreen");
+        if (activeCalcScreen && !activeCalcScreen.classList.contains("hide")) {
             if (warningModal) {
                 warningModal.classList.remove("hide");
             }
@@ -109,7 +119,7 @@ function resetInactivityTimer() {
     }, true);
 });
 
-// Modal buttons event listeners
+// Modal buttons event listeners safely bound on DOM load
 document.addEventListener("DOMContentLoaded", () => {
     const extendBtn = document.getElementById("extendSessionBtn");
     const forceLogoutBtn = document.getElementById("forceLogoutBtn");
@@ -129,8 +139,11 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function openCalculator(userName) {
-  document.getElementById("loginScreen").classList.add("hide");
-  document.getElementById("calculatorScreen").classList.remove("hide");
+  const loginScr = document.getElementById("loginScreen");
+  const calcScr = document.getElementById("calculatorScreen");
+  
+  if (loginScr) loginScr.classList.add("hide");
+  if (calcScr) calcScr.classList.remove("hide");
   
   resetInactivityTimer(); 
   logActivity(`User Logged In: ${userName || 'Email Link User'}`);
@@ -151,11 +164,18 @@ function triggerLogout(reason = "") {
       warningModal.classList.add("hide");
   }
 
-  document.getElementById("calculatorScreen").classList.add("hide");
-  document.getElementById("loginScreen").classList.remove("hide");
-  document.getElementById("pin").value = "";
-  document.getElementById("email").value = "";
-  document.getElementById("loginMessage").innerText = reason;
+  const calcScr = document.getElementById("calculatorScreen");
+  const loginScr = document.getElementById("loginScreen");
+  const pinInput = document.getElementById("pin");
+  const emailInput = document.getElementById("email");
+  const loginMsg = document.getElementById("loginMessage");
+
+  if (calcScr) calcScr.classList.add("hide");
+  if (loginScr) loginScr.classList.remove("hide");
+  if (pinInput) pinInput.value = "";
+  if (emailInput) emailInput.value = "";
+  if (loginMsg) loginMsg.innerText = reason;
+  
   logActivity("User Logged Out" + (reason ? ` (${reason})` : ""));
 }
 
@@ -174,121 +194,141 @@ loadFingerprint();
 
 
 // --- EMAIL AUTHENTICATION ---
-document.getElementById("sendLinkBtn").onclick = async () => {
-  let email = document.getElementById("email").value.trim();
-  if (email === "") { 
-      document.getElementById("loginMessage").innerText = "Enter Email"; 
-      return; 
-  }
-
-  document.getElementById("loginMessage").innerText = "Verifying authorization...";
-
-  try {
-    let usersRef = ref(database, 'users');
-    let snapshot = await get(usersRef);
-
-    if (!snapshot.exists()) {
-        document.getElementById("loginMessage").innerText = "Access Denied: No users found in database.";
-        return;
+const sendLinkBtn = document.getElementById("sendLinkBtn");
+if (sendLinkBtn) {
+  sendLinkBtn.onclick = async () => {
+    let emailEl = document.getElementById("email");
+    let msgEl = document.getElementById("loginMessage");
+    
+    if (!emailEl || !msgEl) return;
+    
+    let email = emailEl.value.trim();
+    if (email === "") { 
+        msgEl.innerText = "Enter Email"; 
+        return; 
     }
 
-    let isAuthorized = false;
-    let isActive = false;
+    msgEl.innerText = "Verifying authorization...";
 
-    snapshot.forEach((childSnapshot) => {
-        let userData = childSnapshot.val();
-        if (userData.email && userData.email.toLowerCase() === email.toLowerCase()) {
-            isAuthorized = true;
-            if (userData.status === "active") {
-                isActive = true;
-            }
-        }
-    });
+    try {
+      let usersRef = ref(database, 'users');
+      let snapshot = await get(usersRef);
 
-    if (!isAuthorized) {
-        document.getElementById("loginMessage").innerText = "Access Denied: This email is not authorized by Admin.";
-        return;
+      if (!snapshot.exists()) {
+          msgEl.innerText = "Access Denied: No users found in database.";
+          return;
+      }
+
+      let isAuthorized = false;
+      let isActive = false;
+
+      snapshot.forEach((childSnapshot) => {
+          let userData = childSnapshot.val();
+          if (userData.email && userData.email.toLowerCase() === email.toLowerCase()) {
+              isAuthorized = true;
+              if (userData.status === "active") {
+                  isActive = true;
+              }
+          }
+      });
+
+      if (!isAuthorized) {
+          msgEl.innerText = "Access Denied: This email is not authorized by Admin.";
+          return;
+      }
+
+      if (!isActive) {
+          msgEl.innerText = "Your account is blocked by Admin.";
+          return;
+      }
+
+      await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+      localStorage.setItem("emailForSignIn", email);
+      msgEl.innerText = "Email link sent. Check your mail.";
+      logActivity(`Email login link requested for: ${email}`);
+    } catch (error) {
+      msgEl.innerText = "Error: " + error.message;
     }
-
-    if (!isActive) {
-        document.getElementById("loginMessage").innerText = "Your account is blocked by Admin.";
-        return;
-    }
-
-    await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-    localStorage.setItem("emailForSignIn", email);
-    document.getElementById("loginMessage").innerText = "Email link sent. Check your mail.";
-    logActivity(`Email login link requested for: ${email}`);
-  } catch (error) {
-    document.getElementById("loginMessage").innerText = "Error: " + error.message;
-  }
-};
+  };
+}
 
 async function checkEmail() {
-  if (isSignInWithEmailLink(auth, window.location.href)) {
-    let email = localStorage.getItem("emailForSignIn");
-    if (!email) { 
-        email = prompt("Please enter your email to complete sign-in:"); 
+  try {
+    if (isSignInWithEmailLink(auth, window.location.href)) {
+      let email = localStorage.getItem("emailForSignIn");
+      if (!email) { 
+          email = prompt("Please enter your email to complete sign-in:"); 
+      }
+      if (email) {
+          await signInWithEmailLink(auth, email, window.location.href);
+          window.localStorage.removeItem('emailForSignIn');
+          openCalculator(email);
+      }
     }
-    try {
-      await signInWithEmailLink(auth, email, window.location.href);
-      window.localStorage.removeItem('emailForSignIn');
-      openCalculator(email);
-    } catch (e) {
-      alert("Email Link Error: " + e.message);
-    }
+  } catch (e) {
+    alert("Email Link Error: " + e.message);
   }
 }
 checkEmail();
 
 
 // --- SECURE PIN LOGIN & DEVICE LOCKING ---
-document.getElementById("pinBtn").onclick = async () => {
-  let pinInput = document.getElementById("pin").value.trim();
+const pinBtn = document.getElementById("pinBtn");
+if (pinBtn) {
+  pinBtn.onclick = async () => {
+    let pinEl = document.getElementById("pin");
+    let msgEl = document.getElementById("loginMessage");
+    
+    if (!pinEl || !msgEl) return;
+    
+    let pinInput = pinEl.value.trim();
 
-  if (pinInput === "" || pinInput.length !== 4) {
-      document.getElementById("loginMessage").innerText = "Enter a valid 4-digit PIN.";
-      return;
-  }
+    if (pinInput === "" || pinInput.length !== 4) {
+        msgEl.innerText = "Enter a valid 4-digit PIN.";
+        return;
+    }
 
-  document.getElementById("loginMessage").innerText = "Checking PIN...";
+    msgEl.innerText = "Checking PIN...";
 
-  try {
-      let usersRef = ref(database, 'users');
-      let q = query(usersRef, orderByChild('pin'), equalTo(pinInput));
-      let snapshot = await get(q);
+    try {
+        let usersRef = ref(database, 'users');
+        let q = query(usersRef, orderByChild('pin'), equalTo(pinInput));
+        let snapshot = await get(q);
 
-      if (snapshot.exists()) {
-          let userData = snapshot.val();
-          let userId = Object.keys(userData)[0]; 
-          let user = userData[userId];
+        if (snapshot.exists()) {
+            let userData = snapshot.val();
+            let userId = Object.keys(userData)[0]; 
+            let user = userData[userId];
 
-          if (user.status !== "active") {
-              document.getElementById("loginMessage").innerText = "Your account is blocked by Admin.";
-              return;
-          }
+            if (user.status !== "active") {
+                msgEl.innerText = "Your account is blocked by Admin.";
+                return;
+            }
 
-          if (!user.deviceId || user.deviceId === "") {
-              await update(ref(database, 'users/' + userId), { deviceId: deviceFingerprint });
-              openCalculator(user.name);
-          } else if (user.deviceId === deviceFingerprint) {
-              openCalculator(user.name);
-          } else {
-              document.getElementById("loginMessage").innerText = "This PIN is already locked to another PC.";
-          }
-      } else {
-          document.getElementById("loginMessage").innerText = "Invalid PIN!";
-      }
-  } catch (e) {
-      document.getElementById("loginMessage").innerText = "Error: " + e.message;
-  }
-};
+            if (!user.deviceId || user.deviceId === "") {
+                await update(ref(database, 'users/' + userId), { deviceId: deviceFingerprint });
+                openCalculator(user.name);
+            } else if (user.deviceId === deviceFingerprint) {
+                openCalculator(user.name);
+            } else {
+                msgEl.innerText = "This PIN is already locked to another PC.";
+            }
+        } else {
+            msgEl.innerText = "Invalid PIN!";
+        }
+    } catch (e) {
+        msgEl.innerText = "Error: " + e.message;
+    }
+  };
+}
 
 
 // --- CALCULATOR LOGIC ---
 function calculate() {
   const getNumber = (id) => {
-      let val = Number(document.getElementById(id).value);
+      let el = document.getElementById(id);
+      if (!el) return 0;
+      let val = Number(el.value);
       return isNaN(val) ? 0 : val;
   };
 
@@ -300,26 +340,43 @@ function calculate() {
   let totalWeight = (sku1 * bags1) + (sku2 * bags2);
   let totalBags = bags1 + bags2;
 
-  document.getElementById("totalWeight").innerText = totalWeight.toFixed(3) + " KG";
-  document.getElementById("totalBags").innerText = totalBags;
+  let weightEl = document.getElementById("totalWeight");
+  let bagsEl = document.getElementById("totalBags");
+
+  if (weightEl) weightEl.innerText = totalWeight.toFixed(3) + " KG";
+  if (bagsEl) bagsEl.innerText = totalBags;
 }
 
-document.getElementById("sku1").onchange = calculate;
-document.getElementById("bags1").oninput = calculate;
-document.getElementById("sku2").onchange = calculate;
-document.getElementById("bags2").oninput = calculate;
+['sku1', 'bags1', 'sku2', 'bags2'].forEach(id => {
+    let el = document.getElementById(id);
+    if (el) {
+        el.oninput = calculate;
+        el.onchange = calculate;
+    }
+});
 
-document.getElementById("resetBtn").onclick = () => {
-  document.getElementById("sku1").value = "0";
-  document.getElementById("bags1").value = "";
-  document.getElementById("sku2").value = "0";
-  document.getElementById("bags2").value = "";
-  calculate(); 
-};
+let resetBtn = document.getElementById("resetBtn");
+if (resetBtn) {
+    resetBtn.onclick = () => {
+      let s1 = document.getElementById("sku1");
+      let b1 = document.getElementById("bags1");
+      let s2 = document.getElementById("sku2");
+      let b2 = document.getElementById("bags2");
 
-document.getElementById("logoutBtn").onclick = () => {
-    triggerLogout();
-};
+      if (s1) s1.value = "0";
+      if (b1) b1.value = "";
+      if (s2) s2.value = "0";
+      if (b2) b2.value = "";
+      calculate(); 
+    };
+}
+
+let logoutBtn = document.getElementById("logoutBtn");
+if (logoutBtn) {
+    logoutBtn.onclick = () => {
+        triggerLogout();
+    };
+}
 
 
 // --- ADMIN PANEL LOGIC ---
@@ -329,60 +386,74 @@ window.openAdminPanel = function() {
     const submitBtn = document.getElementById('submitAdminPin');
     const cancelBtn = document.getElementById('cancelAdminPin');
 
+    if (!passwordModal || !pinInput) return;
+
     pinInput.value = "";
     passwordModal.classList.remove('hide');
     pinInput.focus();
 
-    let newSubmitBtn = submitBtn.cloneNode(true);
-    submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
+    if (submitBtn) {
+        let newSubmitBtn = submitBtn.cloneNode(true);
+        submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
+        
+        document.getElementById('submitAdminPin').onclick = async function() {
+            const pass = pinInput.value.trim();
+            if (!pass) return;
 
-    let newCancelBtn = cancelBtn.cloneNode(true);
-    cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+            try {
+                let adminPinRef = ref(database, 'admin/master_pin');
+                let snapshot = await get(adminPinRef);
 
-    document.getElementById('cancelAdminPin').onclick = function() {
-        document.getElementById('adminPasswordModal').classList.add('hide');
-    };
+                let correctPinHash = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"; 
+                if (snapshot.exists()) {
+                    correctPinHash = String(snapshot.val());
+                }
 
-    document.getElementById('submitAdminPin').onclick = async function() {
-        const pass = pinInput.value.trim();
-        if (!pass) return;
+                const inputHash = await hashString(pass);
 
-        try {
-            let adminPinRef = ref(database, 'admin/master_pin');
-            let snapshot = await get(adminPinRef);
-
-            let correctPinHash = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"; 
-            if (snapshot.exists()) {
-                correctPinHash = String(snapshot.val());
+                if (inputHash === correctPinHash) {
+                    passwordModal.classList.add('hide');
+                    let adminModal = document.getElementById('adminModal');
+                    if (adminModal) adminModal.classList.remove('hide');
+                    loadUsersTable();
+                    loadAuditLogs();
+                    logActivity("Admin Panel Accessed Successfully");
+                } else {
+                    alert("Wrong Master PIN!");
+                    pinInput.value = "";
+                    logActivity("Failed Admin Panel Login Attempt");
+                }
+            } catch (error) {
+                alert("Error verifying Master PIN: " + error.message);
             }
+        };
+    }
 
-            const inputHash = await hashString(pass);
-
-            if (inputHash === correctPinHash) {
-                document.getElementById('adminPasswordModal').classList.add('hide');
-                document.getElementById('adminModal').classList.remove('hide');
-                loadUsersTable();
-                loadAuditLogs();
-                logActivity("Admin Panel Accessed Successfully");
-            } else {
-                alert("Wrong Master PIN!");
-                pinInput.value = "";
-                logActivity("Failed Admin Panel Login Attempt");
-            }
-        } catch (error) {
-            alert("Error verifying Master PIN: " + error.message);
-        }
-    };
+    if (cancelBtn) {
+        let newCancelBtn = cancelBtn.cloneNode(true);
+        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+        
+        document.getElementById('cancelAdminPin').onclick = function() {
+            passwordModal.classList.add('hide');
+        };
+    }
 }
 
 window.closeAdminPanel = function() {
-    document.getElementById('adminModal').classList.add('hide');
+    let adminModal = document.getElementById('adminModal');
+    if (adminModal) adminModal.classList.add('hide');
 }
 
 window.addNewUser = function() {
-    const name = document.getElementById('newUserName').value.trim();
-    const email = document.getElementById('newUserEmail').value.trim();
-    const pin = document.getElementById('newUserPin').value.trim();
+    const nameEl = document.getElementById('newUserName');
+    const emailEl = document.getElementById('newUserEmail');
+    const pinEl = document.getElementById('newUserPin');
+
+    if (!nameEl || !emailEl || !pinEl) return;
+
+    const name = nameEl.value.trim();
+    const email = emailEl.value.trim();
+    const pin = pinEl.value.trim();
 
     if (!name || !email || pin.length !== 4) {
         alert("Please provide name, a valid email, and a 4-digit PIN."); 
@@ -399,9 +470,9 @@ window.addNewUser = function() {
         deviceId: "" 
     }).then(() => {
         alert("User added successfully!");
-        document.getElementById('newUserName').value = '';
-        document.getElementById('newUserEmail').value = '';
-        document.getElementById('newUserPin').value = '';
+        nameEl.value = '';
+        emailEl.value = '';
+        pinEl.value = '';
         loadUsersTable();
         logActivity(`New User Added: ${name} (${email})`);
     }).catch((error) => {
@@ -411,7 +482,10 @@ window.addNewUser = function() {
 
 // --- CHANGE MASTER PIN ---
 window.changeMasterPin = async function() {
-    const newPin = document.getElementById('newMasterPin').value.trim();
+    const newMasterPinEl = document.getElementById('newMasterPin');
+    if (!newMasterPinEl) return;
+    
+    const newPin = newMasterPinEl.value.trim();
 
     if (newPin.length !== 4) {
         alert("Master PIN must be exactly 4 digits.");
@@ -423,7 +497,7 @@ window.changeMasterPin = async function() {
             const hashedNewPin = await hashString(newPin);
             set(ref(database, 'admin/master_pin'), hashedNewPin).then(() => {
                 alert("Master PIN updated successfully!");
-                document.getElementById('newMasterPin').value = '';
+                newMasterPinEl.value = '';
                 logActivity("Admin Master PIN Changed");
             });
         } catch (error) {
@@ -452,6 +526,8 @@ let allUsersCache = [];
 window.loadUsersTable = function(searchQuery = "") {
     get(ref(database, 'users')).then((snapshot) => {
         const tbody = document.getElementById('usersListBody');
+        if (!tbody) return;
+        
         tbody.innerHTML = '';
         if (snapshot.exists()) {
             allUsersCache = [];
@@ -497,20 +573,28 @@ window.loadUsersTable = function(searchQuery = "") {
                 `;
             });
         }
-    });
+    }).catch(err => console.error("Error loading users table:", err));
 }
 
 // --- FILTER USERS TABLE ---
 window.filterUsersTable = function(event) {
-    const queryVal = event.target.value;
-    loadUsersTable(queryVal);
+    if (event && event.target) {
+        const queryVal = event.target.value;
+        loadUsersTable(queryVal);
+    }
 }
 
 // --- USER PIN CHANGE LOGIC ---
 window.submitUserPinChange = async function() {
-    const email = document.getElementById('currentUserEmailInput').value.trim().toLowerCase();
-    const oldPin = document.getElementById('currentOldPin').value.trim();
-    const newPin = document.getElementById('currentNewPin').value.trim();
+    const emailEl = document.getElementById('currentUserEmailInput');
+    const oldPinEl = document.getElementById('currentOldPin');
+    const newPinEl = document.getElementById('currentNewPin');
+
+    if (!emailEl || !oldPinEl || !newPinEl) return;
+
+    const email = emailEl.value.trim().toLowerCase();
+    const oldPin = oldPinEl.value.trim();
+    const newPin = newPinEl.value.trim();
 
     if (!email || oldPin.length !== 4 || newPin.length !== 4) {
         alert("Please enter valid email and 4-digit PINs.");
@@ -549,10 +633,13 @@ window.submitUserPinChange = async function() {
 
         await update(ref(database, 'users/' + foundUserId), { pin: newPin });
         alert("PIN changed successfully!");
-        document.getElementById('currentUserEmailInput').value = '';
-        document.getElementById('currentOldPin').value = '';
-        document.getElementById('currentNewPin').value = '';
-        document.getElementById('changePinModal').classList.add('hide');
+        emailEl.value = '';
+        oldPinEl.value = '';
+        newPinEl.value = '';
+        
+        let changeModal = document.getElementById('changePinModal');
+        if (changeModal) changeModal.classList.add('hide');
+        
         logActivity(`PIN Changed by User: ${foundUserData.name}`);
 
     } catch (error) {
@@ -565,6 +652,8 @@ window.togglePinVisibility = function(userId, actualPin) {
     const pinSpan = document.getElementById(`pin-text-${userId}`);
     const pinBtn = document.getElementById(`pin-btn-${userId}`);
     
+    if (!pinSpan || !pinBtn) return;
+
     if (pinSpan.innerText === "••••") {
         pinSpan.innerText = actualPin;
         pinBtn.innerText = "🙈"; 
