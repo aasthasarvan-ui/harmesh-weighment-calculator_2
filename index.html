@@ -124,6 +124,9 @@
 
         <h2>SKU Weight Calculator</h2>
         
+        <!-- Welcome Name Display -->
+        <div id="userWelcomeDisplay" style="font-size: 16px; font-weight: bold; color: #007bff; margin-bottom: 15px;"></div>
+
         <div style="text-align: left; margin-bottom: 10px;">
             <label style="font-size: 13px;"><strong>Select Theme:</strong></label>
             <select id="themeSelector">
@@ -135,12 +138,12 @@
             </select>
         </div>
 
-                <div style="text-align: left; margin-bottom: 10px;">
+        <div style="text-align: left; margin-bottom: 10px;">
             <label><strong>SKU 1:</strong></label>
             <select id="sku1">
                 <option value="0">Select SKU 1 Weight</option>
-                <option value="50">50 KG</option> <!-- Naya option -->
-                <option value="25">25 KG</option> <!-- Naya option -->
+                <option value="50">50 KG</option>
+                <option value="25">25 KG</option>
                 <option value="50.120">50.120 KG</option>
                 <option value="25.120">25.120 KG</option>
             </select>
@@ -151,15 +154,13 @@
             <label><strong>SKU 2:</strong></label>
             <select id="sku2">
                 <option value="0">Select SKU 2 Weight</option>
-                <option value="50">50 KG</option> <!-- Naya option -->
-                <option value="25">25 KG</option> <!-- Naya option -->
+                <option value="50">50 KG</option>
+                <option value="25">25 KG</option>
                 <option value="50.120">50.120 KG</option>
                 <option value="25.120">25.120 KG</option>
             </select>
             <input type="number" id="bags2" placeholder="Enter Bags Count for SKU 2">
         </div>
-
-           
 
         <div style="background: rgba(0,0,0,0.05); padding: 15px; border-radius: 5px; margin: 15px 0; text-align: left;">
             <p style="margin: 5px 0;"><strong>Total Bags:</strong> <span id="totalBags">0</span></p>
@@ -235,7 +236,16 @@
         <button onclick="closeAdminPanel()" style="background-color: #6c757d; margin-top: 20px;">Close Admin Panel</button>
     </div>
 
-    <!-- 5. SESSION EXPYING SOON WARNING MODAL -->
+    <!-- 5. WELCOME MODAL -->
+    <div id="welcomeModal" class="hide" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 10000;">
+        <div style="background: white; padding: 30px; border-radius: 10px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 350px; width: 90%;">
+            <h2 style="color: #28a745; margin-top: 0;">Welcome!</h2>
+            <p id="welcomeUserText" style="font-size: 18px; color: #333; margin: 15px 0;"></p>
+            <button onclick="document.getElementById('welcomeModal').classList.add('hide')" style="background-color: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;">OK</button>
+        </div>
+    </div>
+
+    <!-- 6. SESSION EXPIRING SOON WARNING MODAL -->
     <div id="sessionWarningModal" class="hide" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 10000;">
         <div style="background: white; padding: 20px 30px; border-radius: 8px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); max-width: 400px; width: 90%;">
             <h3 style="color: #ff5722; margin-top: 0;">Session Expiring Soon!</h3>
@@ -245,7 +255,7 @@
         </div>
     </div>
 
-    <!-- 6. USER CHANGE PIN MODAL -->
+    <!-- 7. USER CHANGE PIN MODAL -->
     <div id="changePinModal" class="hide" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 10000;">
         <div style="background: white; padding: 20px 30px; border-radius: 8px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); max-width: 350px; width: 90%;">
             <h3 style="color: #007bff; margin-top: 0;">Change Your PIN</h3>
